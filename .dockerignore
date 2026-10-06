@@ -1,0 +1,12 @@
+.git
+.agents
+.codex
+.env
+.env.*
+!.env.example
+**/bin
+**/obj
+**/TestResults
+core
+core.*
+deploy/local/secrets
