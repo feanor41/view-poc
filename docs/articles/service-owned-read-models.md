@@ -100,7 +100,7 @@ Compared with a copied or event-projected read model, the view avoids replicated
 - **Schema coordination:** define view columns explicitly and treat them as a versioned contract between the owner and consumers. Coordinate source changes with view definitions and consumer EF mappings; SQL Server may require refreshing view metadata after source schema changes.
 - **Security visibility:** grant only selected reads and deny all consumer DML on imported data. Because the SQL login is also granted SELECT on required source objects, assess whether direct source reads are acceptable.
 - **Indexed views:** SQL Server indexed views require schema binding and can reference base tables only in the same database. They cannot directly materialize these cross-database consumer views. An owner-side indexed view may be exposed through an ordinary consumer view, but the owner pays its write-maintenance cost.
-- **Evidence:** VWP's recorded 3,510-flow performance run is a local single-node characterization from before the VWP-6 mapping change. It is useful as a reproducible starting point, not a production capacity or scaling guarantee.
+- **Evidence:** VWP has a 3,510-flow local single-node baseline from before VWP-6 and a 3,510-flow repeat after the mapping change. The [performance guide](../performance-baseline.md) compares the raw measurements; neither run is a production capacity or scaling guarantee.
 
 ## Adoption checklist
 

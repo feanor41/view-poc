@@ -33,7 +33,7 @@ python3 scripts/verify-local.py
 
 The verification writes and updates Account, Asset, and ContactInformation through Accounts; reads the consumer clones; confirms the updated values appear on subsequent requests; and checks native EF Core rejection of INSERT, UPDATE, DELETE, ExecuteUpdate, and ExecuteDelete against view-only entities. Separate raw UPDATE probes check SQL permissions on the consumer views and source tables.
 
-The [performance guide](docs/performance-baseline.md) explains how to run concurrent Account-to-Operation flows and inspect the raw per-request latency and failure results. Its checked-in measurements are a single-node local baseline recorded before the VWP-6 mapping change; they are not production capacity or a post-VWP-6 performance result.
+The [performance guide](docs/performance-baseline.md) includes the historical pre-VWP-6 baseline and a repeat run after the mapping change, with raw per-request evidence and a side-by-side comparison. Both are single-node local characterizations, not production capacity claims.
 
 Accounts API routes:
 

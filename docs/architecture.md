@@ -64,7 +64,7 @@ Raw SQL bypasses the EF mapping. SQL grants SELECT on consumer views and the sou
 
 Start the disposable local environment with the [Kubernetes guide](local-kubernetes.md). It documents prerequisites, secret handling, local-only port forwards, verification, troubleshooting, and deletion of the dedicated kind cluster. The [performance guide](performance-baseline.md) includes commands for new bounded runs and the raw JSON evidence already collected.
 
-The checked-in benchmark completed 3,510 of 3,510 Account-to-Operation flows at offered rates from 2 to 150 flows per second, with no failed flows in those runs. It used one kind node, one pod per API, and one SQL Server pod on one developer machine. The results were collected before the VWP-6 EF mapping change, so they are historical local evidence, not a current post-change performance measurement or a production capacity or horizontal-scaling claim.
+The checked-in benchmark includes a 3,510-flow baseline before VWP-6 and a 3,510-flow repeat after VWP-6; both completed every scheduled Account-to-Operation flow without failures at offered rates from 2 to 150 flows per second. Each used one kind node, one pod per API, and one SQL Server pod on one developer machine. The [performance guide](performance-baseline.md) has the raw evidence and comparison. These are local characterizations, not production capacity or horizontal-scaling claims.
 
 ## Indexed-view assessment
 
