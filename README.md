@@ -5,6 +5,7 @@ VWP is a runnable proof of concept for four .NET 10 services on one SQL Server i
 ## Documentation map
 
 - [Architecture and data ownership](docs/architecture.md) — service boundaries, shared read models, request flow, and design limits.
+- [Service-owned read models over cross-database views](docs/articles/service-owned-read-models.md) — the reusable pattern, adoption checklist, and decision guidance.
 - [Local Kubernetes guide](docs/local-kubernetes.md) — prerequisites, setup, verification, troubleshooting, and teardown.
 - [EF Core mapping analysis](docs/ef-core-cross-database-views.md) — view-only mapping, write rejection, SQL permissions, and indexed-view assessment.
 - [Performance baseline and reproduction](docs/performance-baseline.md) — historical local results and bounded load commands.
