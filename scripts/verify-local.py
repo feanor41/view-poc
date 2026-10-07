@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise source writes, cross-service view reads, freshness, and read-only guards."""
+"""Exercise source writes, view reads, native EF write rejection, and SQL permissions."""
 
 from __future__ import annotations
 
@@ -133,6 +133,65 @@ def write_source_values(
         expect_status("Accounts", status, 200, body, f"{entity} write")
 
 
+def verify_immediate_financials_operation() -> None:
+    """Read a newly committed Account once, then create only a Financials-owned row."""
+    account_id = str(uuid.uuid4())
+    account_name = f"VWP immediate operation account {account_id}"
+    status, body = request(
+        ACCOUNTS_URL,
+        f"/accounts/{account_id}",
+        method="PUT",
+        payload={"name": account_name, "status": "Active"},
+    )
+    expect_status("Accounts", status, 200, body, "unique Account creation")
+    if body.get("id") != account_id:
+        raise AssertionError(f"Accounts: unexpected newly created Account: {body}")
+
+    # This is the very next HTTP call: no polling, delay, or synchronization step.
+    financials_url = SERVICES["Financials"]
+    status, body = request(financials_url, f"/accounts/{account_id}")
+    expect_status("Financials", status, 200, body, "immediate first Account view read")
+    if body.get("id") != account_id or body.get("name") != account_name:
+        raise AssertionError(f"Financials: first view read did not match new Account: {body}")
+
+    payload = {
+        "accountId": account_id,
+        "description": f"VWP immediate operation {account_id}",
+        "amount": 123.45,
+    }
+    status, created = request(financials_url, "/operations", method="POST", payload=payload)
+    expect_status("Financials", status, 201, created, "Operation creation")
+    operation_id = created.get("id")
+    if not operation_id:
+        raise AssertionError(f"Financials: Operation response has no id: {created}")
+    uuid.UUID(operation_id)
+    if any(created.get(field) != expected for field, expected in payload.items()):
+        raise AssertionError(f"Financials: Operation response fields do not match: {created}")
+
+    status, persisted = request(financials_url, f"/operations/{operation_id}")
+    expect_status("Financials", status, 200, persisted, "persisted Operation read")
+    if persisted != created:
+        raise AssertionError(f"Financials: persisted Operation differs from creation: {persisted}")
+
+    unknown_account_id = str(uuid.uuid4())
+    status, body = request(financials_url, f"/accounts/{unknown_account_id}")
+    expect_status("Financials", status, 404, body, "unknown Account view read")
+    status, body = request(
+        financials_url,
+        "/operations",
+        method="POST",
+        payload={**payload, "accountId": unknown_account_id},
+    )
+    expect_status("Financials", status, 404, body, "unknown Account Operation rejection")
+    if unknown_account_id not in body.get("message", ""):
+        raise AssertionError(f"Financials: unexpected unknown Account rejection: {body}")
+    print(
+        "PASS: unique Account immediately visible in Financials on the first query; "
+        "Financials Operation created and persisted; unknown Account rejected."
+    )
+    print(f"Immediate Account id: {account_id}; Financials Operation id: {operation_id}")
+
+
 def main() -> None:
     uuid.UUID(ACCOUNT_ID)
     uuid.UUID(ASSET_ID)
@@ -151,6 +210,8 @@ def main() -> None:
                     "and confirm scripts/local-up.sh completed."
                 )
             time.sleep(1)
+
+    verify_immediate_financials_operation()
 
     write_source_values(
         account_name="VWP shared account v1",
@@ -199,18 +260,19 @@ def main() -> None:
             path = f"/accounts/{ACCOUNT_ID}/write-probe/{operation}"
             status, body = request(base_url, path, method="POST", payload={})
             expect_status(service, status, 409, body, f"{operation} write probe")
-            if body.get("blocked") is not True or body.get("guard") != "ef-save-changes":
-                raise AssertionError(f"{service}: unexpected EF guard response: {body}")
+            if body.get("blocked") is not True or body.get("guard") != "ef-view-mapping":
+                raise AssertionError(f"{service}: expected native EF SaveChanges rejection: {body}")
 
-        status, body = request(
-            base_url,
-            f"/accounts/{ACCOUNT_ID}/write-probe/execute-update",
-            method="POST",
-            payload={},
-        )
-        expect_status(service, status, 409, body, "bulk update permission probe")
-        if body.get("blocked") is not True or body.get("guard") != "ef-view-mapping":
-            raise AssertionError(f"{service}: unexpected EF view mapping response: {body}")
+        for bulk_operation in ("execute-update", "execute-delete"):
+            status, body = request(
+                base_url,
+                f"/accounts/{ACCOUNT_ID}/write-probe/{bulk_operation}",
+                method="POST",
+                payload={},
+            )
+            expect_status(service, status, 409, body, f"{bulk_operation} translation probe")
+            if body.get("blocked") is not True or body.get("guard") != "ef-view-mapping":
+                raise AssertionError(f"{service}: expected native EF bulk translation rejection: {body}")
 
         for raw_operation in ("raw-update-view", "raw-update-source"):
             status, body = request(
@@ -237,8 +299,9 @@ def main() -> None:
         )
 
     print(
-        "PASS: Accounts writes, first-read visibility, update visibility, EF INSERT/UPDATE/DELETE "
-        "guards, EF view-mapping rejection, SQL raw-DML permissions, and unchanged consumer reads."
+        "PASS: Accounts writes, first-read visibility, update visibility, native EF SaveChanges "
+        "INSERT/UPDATE/DELETE and ExecuteUpdate/Delete rejection, SQL raw-DML permissions, "
+        "and unchanged consumer reads."
     )
     print(f"Account id: {ACCOUNT_ID}")
     print("Consumers: Financials, Cases, Notifications")

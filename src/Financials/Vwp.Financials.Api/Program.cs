@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
-using Vwp.DataAccess;
 using Vwp.Financials.Api.Data;
 using Vwp.Financials.Api.Domain;
 
@@ -43,6 +42,57 @@ app.MapGet("/accounts/{accountId:guid}", async (
             .ToArray()));
 });
 
+app.MapPost("/operations", async (
+    OperationInput input,
+    FinancialsDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(input.Description) || input.Description.Trim().Length > 500)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [nameof(input.Description)] = ["Description is required and must be at most 500 characters."]
+        });
+    }
+
+    // A fresh query reads the consumer's local view. Keep the imported Account
+    // untracked and assign only AccountId so Add cannot attach the read-only graph.
+    var account = await db.Accounts
+        .AsNoTracking()
+        .SingleOrDefaultAsync(value => value.Id == input.AccountId, cancellationToken);
+    if (account is null)
+    {
+        return Results.NotFound(new { message = $"Account '{input.AccountId}' was not found." });
+    }
+
+    var operation = new Operation
+    {
+        Id = Guid.NewGuid(),
+        AccountId = account.Id,
+        Description = input.Description.Trim(),
+        Amount = input.Amount
+    };
+    db.Operations.Add(operation);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Created(
+        $"/operations/{operation.Id}",
+        new OperationResponse(operation.Id, operation.AccountId, operation.Description, operation.Amount));
+});
+
+app.MapGet("/operations/{operationId:guid}", async (
+    Guid operationId,
+    FinancialsDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var operation = await db.Operations
+        .AsNoTracking()
+        .SingleOrDefaultAsync(value => value.Id == operationId, cancellationToken);
+    return operation is null
+        ? Results.NotFound()
+        : Results.Ok(new OperationResponse(
+            operation.Id, operation.AccountId, operation.Description, operation.Amount));
+});
+
 app.MapPost("/accounts/{accountId:guid}/write-probe/{operation}", async (
     Guid accountId,
     string operation,
@@ -70,6 +120,7 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/{operation}", async (
             break;
         case "update":
             account.Name = $"{account.Name} (forbidden consumer update)";
+            db.Accounts.Update(account);
             break;
         case "delete":
             db.Accounts.Remove(account);
@@ -83,9 +134,10 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/{operation}", async (
         await db.SaveChangesAsync(cancellationToken);
         return Results.Problem("The view-backed write unexpectedly succeeded.", statusCode: 500);
     }
-    catch (ReadOnlyViewWriteAttemptException)
+    catch (InvalidOperationException exception) when (
+        exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
     {
-        return Results.Conflict(new { blocked = true, guard = "ef-save-changes", operation });
+        return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation });
     }
 });
 
@@ -103,16 +155,33 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/execute-update", async (
                 cancellationToken);
         return affected == 0
             ? Results.NotFound()
-            : Results.Problem("The database-permission probe unexpectedly changed a source row.", statusCode: 500);
-    }
-    catch (SqlException exception) when (exception.Number == 229)
-    {
-        return Results.Conflict(new { blocked = true, guard = "sql-permissions", operation = "execute-update" });
+            : Results.Problem("The view-only bulk update unexpectedly changed a source row.", statusCode: 500);
     }
     catch (InvalidOperationException exception) when (
         exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
     {
         return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation = "execute-update" });
+    }
+});
+
+app.MapPost("/accounts/{accountId:guid}/write-probe/execute-delete", async (
+    Guid accountId,
+    FinancialsDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var affected = await db.Accounts
+            .Where(value => value.Id == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
+        return affected == 0
+            ? Results.NotFound()
+            : Results.Problem("The view-only bulk delete unexpectedly changed a source row.", statusCode: 500);
+    }
+    catch (InvalidOperationException exception) when (
+        exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
+    {
+        return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation = "execute-delete" });
     }
 });
 
@@ -165,3 +234,6 @@ internal sealed record AccountResponse(
     DateTimeOffset CreatedAt,
     IReadOnlyCollection<AssetResponse> Assets);
 internal sealed record AssetResponse(Guid Id, Guid AccountId, string Name, string Kind, decimal Value);
+
+internal sealed record OperationInput(Guid AccountId, string Description, decimal Amount);
+internal sealed record OperationResponse(Guid Id, Guid AccountId, string Description, decimal Amount);

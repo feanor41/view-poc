@@ -19,10 +19,7 @@ public sealed class FinancialsDbContext(DbContextOptions<FinancialsDbContext> op
         modelBuilder.Entity<Account>(entity =>
         {
             entity.HasKey(value => value.Id);
-            entity.ToExternalReadOnlyView(
-                viewName: "Accounts",
-                sourceDatabase: "Accounts",
-                sourceTable: "Accounts");
+            entity.ToExternalReadOnlyView("Accounts");
             entity.Property(value => value.Name).HasMaxLength(200).IsRequired();
             entity.Property(value => value.Status).HasMaxLength(40).IsRequired();
             entity.Property(value => value.CreatedAt).HasColumnType("datetimeoffset(7)");
@@ -35,10 +32,7 @@ public sealed class FinancialsDbContext(DbContextOptions<FinancialsDbContext> op
         modelBuilder.Entity<Asset>(entity =>
         {
             entity.HasKey(value => value.Id);
-            entity.ToExternalReadOnlyView(
-                viewName: "Assets",
-                sourceDatabase: "Accounts",
-                sourceTable: "Assets");
+            entity.ToExternalReadOnlyView("Assets");
             entity.Property(value => value.Name).HasMaxLength(200).IsRequired();
             entity.Property(value => value.Kind).HasMaxLength(80).IsRequired();
             entity.Property(value => value.Value).HasPrecision(18, 2);

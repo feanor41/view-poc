@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
-using Vwp.DataAccess;
 using Vwp.Notifications.Api.Data;
 using Vwp.Notifications.Api.Domain;
 
@@ -73,6 +72,7 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/{operation}", async (
             break;
         case "update":
             account.Name = $"{account.Name} (forbidden consumer update)";
+            db.Accounts.Update(account);
             break;
         case "delete":
             db.Accounts.Remove(account);
@@ -86,9 +86,10 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/{operation}", async (
         await db.SaveChangesAsync(cancellationToken);
         return Results.Problem("The view-backed write unexpectedly succeeded.", statusCode: 500);
     }
-    catch (ReadOnlyViewWriteAttemptException)
+    catch (InvalidOperationException exception) when (
+        exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
     {
-        return Results.Conflict(new { blocked = true, guard = "ef-save-changes", operation });
+        return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation });
     }
 });
 
@@ -106,16 +107,33 @@ app.MapPost("/accounts/{accountId:guid}/write-probe/execute-update", async (
                 cancellationToken);
         return affected == 0
             ? Results.NotFound()
-            : Results.Problem("The database-permission probe unexpectedly changed a source row.", statusCode: 500);
-    }
-    catch (SqlException exception) when (exception.Number == 229)
-    {
-        return Results.Conflict(new { blocked = true, guard = "sql-permissions", operation = "execute-update" });
+            : Results.Problem("The view-only bulk update unexpectedly changed a source row.", statusCode: 500);
     }
     catch (InvalidOperationException exception) when (
         exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
     {
         return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation = "execute-update" });
+    }
+});
+
+app.MapPost("/accounts/{accountId:guid}/write-probe/execute-delete", async (
+    Guid accountId,
+    NotificationsDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var affected = await db.Accounts
+            .Where(value => value.Id == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
+        return affected == 0
+            ? Results.NotFound()
+            : Results.Problem("The view-only bulk delete unexpectedly changed a source row.", statusCode: 500);
+    }
+    catch (InvalidOperationException exception) when (
+        exception.Message.Contains("not mapped to a table", StringComparison.Ordinal))
+    {
+        return Results.Conflict(new { blocked = true, guard = "ef-view-mapping", operation = "execute-delete" });
     }
 });
 

@@ -17,10 +17,7 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
         modelBuilder.Entity<Account>(entity =>
         {
             entity.HasKey(value => value.Id);
-            entity.ToExternalReadOnlyView(
-                viewName: "Accounts",
-                sourceDatabase: "Accounts",
-                sourceTable: "Accounts");
+            entity.ToExternalReadOnlyView("Accounts");
             entity.Property(value => value.Name).HasMaxLength(200).IsRequired();
             entity.Property(value => value.Status).HasMaxLength(40).IsRequired();
             entity.Property(value => value.CreatedAt).HasColumnType("datetimeoffset(7)");
@@ -33,10 +30,7 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
         modelBuilder.Entity<ContactInformation>(entity =>
         {
             entity.HasKey(value => value.Id);
-            entity.ToExternalReadOnlyView(
-                viewName: "ContactInformation",
-                sourceDatabase: "Accounts",
-                sourceTable: "ContactInformation");
+            entity.ToExternalReadOnlyView("ContactInformation");
             entity.HasIndex(value => value.AccountId).IsUnique();
             entity.Property(value => value.Email).HasMaxLength(320).IsRequired();
             entity.Property(value => value.Phone).HasMaxLength(50).IsRequired();

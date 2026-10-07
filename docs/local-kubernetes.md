@@ -1,10 +1,10 @@
 # Local Kubernetes environment
 
-The VWP proof of concept uses a dedicated disposable kind cluster named `vwp`, namespace `vwp`, four HTTP APIs, and one SQL Server Developer instance with four databases. All commands target `kind-vwp` explicitly rather than the active kubectl context. Set `VWP_CLUSTER_NAME` consistently to use another dedicated cluster name.
+The VWP proof of concept uses a dedicated disposable kind cluster named `vwp`, namespace `vwp`, four HTTP APIs, and one SQL Server Developer instance with four databases. All commands target `kind-vwp` explicitly rather than the active kubectl context. Set `VWP_CLUSTER_NAME` consistently to use another dedicated cluster name. See the [architecture overview](architecture.md) for service ownership and the cross-database view flow.
 
 ## Prerequisites and pinned images
 
-Use an x86_64 Linux Docker environment with at least 8 GiB available memory, Docker daemon access, Bash, OpenSSL, kubectl, and kind v0.33.0. The bootstrap downloads images and the API builds restore NuGet packages, so network access is required. Docker Desktop also works with a Linux x86_64 engine; ARM SQL Server emulation is outside this bundle.
+Use an x86_64 Linux Docker environment with at least 8 GiB available memory, Docker daemon access, Bash, OpenSSL, kubectl, kind v0.33.0, and Python 3.10 or later. The bootstrap downloads images and the API builds restore NuGet packages, so network access is required. The verification and performance scripts use only the Python standard library. Docker Desktop also works with a Linux x86_64 engine; ARM SQL Server emulation is outside this bundle.
 
 | Component | Image |
 | --- | --- |
@@ -36,7 +36,23 @@ After `local-up.sh` replaces API pods, restart `local-forward.sh` because an exi
 | Cases | `http://127.0.0.1:5103` |
 | Notifications | `http://127.0.0.1:5104` |
 
-Each API exposes `/health/live` for process liveness and `/health/ready` for database connectivity. The parent README documents the create/update/read verification flow.
+Each API exposes `/health/live` for process liveness and `/health/ready` for database connectivity. The local verifier checks readiness itself, so there is no need to wait with a separate polling command.
+
+## Verify immediate Financials use
+
+With the forwards running, execute:
+
+```bash
+python3 scripts/verify-local.py
+```
+
+After checking service readiness, the verifier creates a unique Account through Accounts. Its very next HTTP request reads that Account through Financials' local Accounts view, with no polling, delay, or synchronization step. It then posts `accountId`, `description`, and `amount` to Financials `POST /operations`, expects HTTP 201 with the matching AccountId and new OperationId, and reads `GET /operations/{operationId}` to confirm persistence in a separate request. An unknown AccountId must return HTTP 404.
+
+Financials validates the Account through a fresh no-tracking view query before adding or saving its owned Operation. It sets only the Operation's AccountId and leaves the read-only Account graph unattached. The saved row lives in `Financials.dbo.Operations`; the Accounts object remains a view. The verifier subsequently runs the existing source-update visibility and read-only write checks. Each run retains one new Account and one Operation in the disposable databases.
+
+On success, the verifier prints PASS lines for the immediate Account-to-Operation flow and the full set of Account visibility, EF write-rejection, raw SQL permission, and unchanged-read checks. A non-zero exit means at least one check failed. The [performance guide](performance-baseline.md) uses the same local cluster and documents fresh bounded load runs; repeated runs add rows and do not clean them up.
+
+There is no cross-database foreign key: this check validates existence at query time. Concurrent source deletion after validation is not prevented by this minimal flow.
 
 ## Data and security model
 
