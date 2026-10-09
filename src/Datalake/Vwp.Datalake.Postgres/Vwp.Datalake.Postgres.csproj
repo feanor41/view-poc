@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><PackageReference Include="Npgsql" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../../../database/datalake/postgres/*.sql" /></ItemGroup>
+</Project>

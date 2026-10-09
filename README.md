@@ -9,6 +9,8 @@ VWP is a runnable proof of concept for four .NET 10 services on one SQL Server i
 - [Local Kubernetes guide](docs/local-kubernetes.md) — prerequisites, setup, verification, troubleshooting, and teardown.
 - [EF Core mapping analysis](docs/ef-core-cross-database-views.md) — view-only mapping, write rejection, SQL permissions, and indexed-view assessment.
 - [Performance baseline and reproduction](docs/performance-baseline.md) — historical local results and bounded load commands.
+- [Physical reporting synchronization](docs/datalake-synchronization.md) — native incremental SQL Server and PostgreSQL paths into a separate Datalake reporting database.
+- [Datalake verification and workload reproduction](docs/datalake-verification.md) — isolated correctness scenarios and parameterized baseline/burst measurements.
 
 For a clean checkout, read the architecture overview, follow the local guide, run its repeatable verifier, and then use the performance guide if you want to collect a separate load result.
 
@@ -51,3 +53,15 @@ Financials also exposes POST /operations and GET /operations/{operationId}. It v
 Read [the architecture overview](docs/architecture.md) for the service and database layout, then [the focused mapping analysis](docs/ef-core-cross-database-views.md) for the ToExternalReadOnlyView extension, EF Core write protection, SQL permissions, freshness behavior, and the separate indexed-view assessment.
 
 The short version: ordinary three-part-name views work when the source and consumer databases are on the same SQL Server instance. A normal view query reads the current committed source rows; it does not maintain a replica. SQL Server indexed views cannot reference another database, so they cannot directly replace these consumer views.
+
+## Physical Datalake demonstration
+
+The reporting extension complements the existing views with physical copies and a service-independent reporting projection. It demonstrates SQL Server Change Tracking and PostgreSQL `pgoutput` separately, with synthetic source databases on the same instance as their respective Datalake. PostgreSQL uses minimal equivalent source tables; the four original APIs remain SQL Server applications.
+
+```bash
+dotnet build VWP.sln --configuration Release
+python3 scripts/datalake-verify.py --help
+python3 scripts/datalake-benchmark.py --help
+```
+
+Follow the [synchronization guide](docs/datalake-synchronization.md) for capture, commands and configuration, then the [verification guide](docs/datalake-verification.md) for isolated test prerequisites. These commands do not deploy the extension into the shared Kubernetes cluster. Keep runtime credentials and evidence outside the checkout. The five-year configurable retention horizon has no automatic purge; bounded local measurements do not establish multi-year production capacity.
